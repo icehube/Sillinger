@@ -13,6 +13,9 @@ Todo:
 # Constants
 SALARY = 56.8
 MIN_SALARY = 0.5
+PENALTIES = {"GVR": 0.5, "VPP": 0.5, "BOT": 0.5, "ZSK": 0.5, 
+             "HSM": 0.5, "LPT": 0.5, "SHF": 1.5, "JHN": 1.5,  
+             "SRL": 1.5, "LGN": 2.5, "MAC": 2.5}
 TEAMS = 11
 FORWARD = 14
 DEFENCE = 7
@@ -41,27 +44,24 @@ class FantasyAuction:
     
         total_pool = SALARY * TEAMS
         committed_salary = self.players_df[self.players_df['Status'] == 'START']['Salary'].sum()
+        total_penalties = sum(PENALTIES.values())   # Calculate the sum of the penalties
+        committed_salary += total_penalties     # Add the sum of the penalties to committed_salary
         available_to_spend = total_pool - committed_salary
         player_count, total_z = self.calculate_z_scores()
         total_bid_sum, restrict, dollar_per_z = self.update_bids(player_count, total_z, available_to_spend)
         return total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z
 
     def calculate_z_scores(self):
-
         grouped_players = self.players_df.groupby('Pos')
 
         F_baseline = FORWARD * TEAMS
         D_baseline = DEFENCE * TEAMS
         G_baseline = GOALIE * TEAMS
-       
-        # Initialize grouped_players DataFrame to hold players by their positions
-        grouped_players = self.players_df.groupby('Pos')
 
         player_count = 0  # Initialize the counter
         total_z = 0 
 
         # Loop over each player group to perform calculations
-
         for pos, group in grouped_players:
             group = group.sort_values('Pts', ascending=False)
             if pos == 'F':
@@ -73,30 +73,33 @@ class FantasyAuction:
             else:
                 continue
 
-        filtered_top_players = top_players[top_players['Team'].isin(['ENT', 'RFA', 'UFA'])]
+            filtered_top_players = top_players[top_players['Team'].isin(['ENT', 'RFA', 'UFA'])]
 
-        # Update the counter with the number of rows in filtered_top_players
-        player_count += len(filtered_top_players)
+            # Update the counter with the number of rows in filtered_top_players
+            player_count += len(filtered_top_players)
 
-        # Calculate Z-scores for filtered top players
-        points = filtered_top_players['Pts']
-        mean_pts = points.mean()
-        stdev_pts = points.std()
+            # Calculate Z-scores for filtered top players
+            points = filtered_top_players['Pts']
+            mean_pts = points.mean()
+            stdev_pts = points.std()
 
-        # Calculate and assign Z-scores directly in the DataFrame
-        self.players_df.loc[filtered_top_players.index, 'Z-score'] = (points - mean_pts) / stdev_pts
+            if stdev_pts == 0:
+                stdev_pts = 1  # Avoid division by zero
 
-        # Standardize Z-scores so that the lowest is 0
-        min_z_score = self.players_df.loc[filtered_top_players.index, 'Z-score'].min()
-        self.players_df.loc[filtered_top_players.index, 'Z-score'] -= min_z_score
+            # Calculate and assign Z-scores directly in the DataFrame
+            self.players_df.loc[filtered_top_players.index, 'Z-score'] = (points - mean_pts) / stdev_pts
 
-        self.players_df['Z-score'].fillna(0, inplace=True)
-        self.players_df['Z-score'] = self.players_df['Z-score'].round(2)
+            # Standardize Z-scores so that the lowest is 0
+            min_z_score = self.players_df.loc[filtered_top_players.index, 'Z-score'].min()
+            self.players_df.loc[filtered_top_players.index, 'Z-score'] -= min_z_score
 
-        total_z += self.players_df.loc[filtered_top_players.index, 'Z-score'].sum()
+            self.players_df['Z-score'].fillna(0, inplace=True)
+            self.players_df['Z-score'] = self.players_df['Z-score'].round(2)
 
-        # Update the original DataFrame with the Z-scores calculated
-        self.players_df.update(filtered_top_players)
+            total_z += self.players_df.loc[filtered_top_players.index, 'Z-score'].sum()
+
+            # Update the original DataFrame with the Z-scores calculated
+            self.players_df.update(filtered_top_players)
 
         return player_count, total_z
     
@@ -198,7 +201,7 @@ class FantasyAuction:
         print(f"DOLLAR_PER_Z: {dollar_per_z:.2f}")
 
         print('=' * 70)
-        print(self.players_df.head(30))
+        print(self.players_df.head(50))
         print("=" * 70)
 
         print(f"Sum of all Bid Values: {total_bid_sum:.2f}")
@@ -206,6 +209,22 @@ class FantasyAuction:
 
 if __name__ == "__main__":
     fantasy_auction = FantasyAuction('players.csv')
-    total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z  = fantasy_auction.process_data()
+    total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z = fantasy_auction.process_data()
     fantasy_auction.build_model()
     fantasy_auction.print_results(total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z)
+
+    # Test calculate_z_scores method
+    player_count, total_z = fantasy_auction.calculate_z_scores()
+    print(f"Player Count: {player_count}")
+    print(f"Total Z: {total_z}")
+
+    # Print the top 40 players with position 'G' and their Z-scores
+    top_40_g = fantasy_auction.players_df[fantasy_auction.players_df['Pos'] == 'F'].sort_values(by='Pts', ascending=False).head(200)
+    top_40_g = top_40_g.reset_index(drop=True)
+    top_40_g.index = top_40_g.index + 1  # Start the index from 1
+    top_40_g.index.name = 'Rank'
+    pd.set_option("display.max_rows", 1000)
+    pd.set_option("display.expand_frame_repr", True)
+    pd.set_option('display.width', 1000)
+    print(f"Top 40 G Players and their Z-scores:\n{top_40_g[['Player', 'Pos', 'Team', 'Pts', 'Z-score']]}")
+    print(f"Z-scores:\n{fantasy_auction.players_df[['Pos', 'Z-score']].head(50)}")
