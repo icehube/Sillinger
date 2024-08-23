@@ -1,0 +1,57 @@
+{
+    "GVR": {
+        "id": 7,
+        "name": "Grovenor Drew",
+        "penalty": 0.5
+    },
+    "VPP": {
+        "id": 10,
+        "name": "Varsity Park Partisans",
+        "penalty": 0.5
+    },
+    "BOT": {
+        "id": 1,
+        "name": "Bridlewood AI",
+        "penalty": 0.5
+    },
+    "ZSK": {
+        "id": 8,
+        "name": "The Zalesaks",
+        "penalty": 0.5
+    },
+    "HSM": {
+        "id": 11,
+        "name": "Heskel Salims",
+        "penalty": 0.5
+    },
+    "LPT": {
+        "id": 4,
+        "name": "Lipton Soup Nuts",
+        "penalty": 0.5
+    },
+    "SHF": {
+        "id": 5,
+        "name": "The Shafranators",
+        "penalty": 1.5
+    },
+    "JHN": {
+        "id": 6,
+        "name": "Johannesburg Israeleafs",
+        "penalty": 1.5
+    },
+    "SRL": {
+        "id": 2,
+        "name": "Searle Supremes",
+        "penalty": 1.5
+    },
+    "LGN": {
+        "id": 9,
+        "name": "Lessard Gnomes",
+        "penalty": 2.5
+    },
+    "MAC": {
+        "id": 3,
+        "name": "Maccabi Tevatron",
+        "penalty": 2.5
+    }
+}

@@ -1,5 +1,6 @@
 import time
 import pandas as pd 
+import json
 
 from pyscipopt import Model
 
@@ -10,12 +11,16 @@ Todo:
 #I think optimizer has bids + Salary (which has bids)
 """
 
+# Load teams from the JSON file
+with open('teams.json', 'r') as file:
+    teams_data = json.load(file)
+
+# Extract penalties from the teams data
+PENALTIES = {team: data['penalty'] for team, data in teams_data.items()}
+
 # Constants
 SALARY = 56.8
 MIN_SALARY = 0.5
-PENALTIES = {"GVR": 0.5, "VPP": 0.5, "BOT": 0.5, "ZSK": 0.5, 
-             "HSM": 0.5, "LPT": 0.5, "SHF": 1.5, "JHN": 1.5,  
-             "SRL": 1.5, "LGN": 2.5, "MAC": 2.5}
 TEAMS = 11
 FORWARD = 14
 DEFENCE = 7
