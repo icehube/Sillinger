@@ -6,7 +6,6 @@ from pyscipopt import Model
 
 """
 Todo:
-#ADD PENALITIES (Remove salary from overall pool)
 #Make Optimizer use saved version so that I can edit the CSV
 #I think optimizer has bids + Salary (which has bids)
 """
