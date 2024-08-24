@@ -6,6 +6,8 @@ from pyscipopt import Model
 
 """
 Todo:
+#System is not factoring in players that are starting but are below baseline
+#System is not factoring in players that in the MINOR but above baseline
 #Make Optimizer use saved version so that I can edit the CSV
 #I think optimizer has bids + Salary (which has bids)
 """
@@ -32,13 +34,16 @@ class FantasyAuction:
 
     def load_data(self):
         try:
+            # Load the data into a DataFrame
             df = pd.read_csv(
                 self.csv_path, 
                 dtype={'Pts': int, 'Salary': float, 'Bid': float}
             )
+
         except Exception as e:
             print(f"Error reading the CSV file: {e}")
             exit(1)  # Exit the script
+
         return df
 
     def process_data(self):
@@ -51,11 +56,13 @@ class FantasyAuction:
         total_penalties = sum(PENALTIES.values())   # Calculate the sum of the penalties
         committed_salary += total_penalties     # Add the sum of the penalties to committed_salary
         available_to_spend = total_pool - committed_salary
+        self.players_df['Draftable'] = "NO"  # Initialize the Draftable column to 0
         player_count, total_z = self.calculate_z_scores()
         total_bid_sum, restrict, dollar_per_z = self.update_bids(player_count, total_z, available_to_spend)
         return total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z
 
     def calculate_z_scores(self):
+
         grouped_players = self.players_df.groupby('Pos')
 
         F_baseline = FORWARD * TEAMS
@@ -79,6 +86,10 @@ class FantasyAuction:
 
             filtered_top_players = top_players[top_players['Team'].isin(['ENT', 'RFA', 'UFA'])]
 
+            # Use .loc to update the Draftable column in self.players_df for filtered_top_players
+            draftable_indices = filtered_top_players.index
+            self.players_df.loc[draftable_indices, 'Draftable'] = "YES"
+
             # Update the counter with the number of rows in filtered_top_players
             player_count += len(filtered_top_players)
 
@@ -91,19 +102,12 @@ class FantasyAuction:
                 stdev_pts = 1  # Avoid division by zero
 
             # Calculate and assign Z-scores directly in the DataFrame
-            self.players_df.loc[filtered_top_players.index, 'Z-score'] = (points - mean_pts) / stdev_pts
+            z_scores = (points - mean_pts) / stdev_pts
+            z_scores -= z_scores.min()  # Standardize Z-scores so the minimum is 0
 
-            # Standardize Z-scores so that the lowest is 0
-            min_z_score = self.players_df.loc[filtered_top_players.index, 'Z-score'].min()
-            self.players_df.loc[filtered_top_players.index, 'Z-score'] -= min_z_score
+            self.players_df.loc[draftable_indices, 'Z-score'] = z_scores.round(2)
 
-            self.players_df['Z-score'].fillna(0, inplace=True)
-            self.players_df['Z-score'] = self.players_df['Z-score'].round(2)
-
-            total_z += self.players_df.loc[filtered_top_players.index, 'Z-score'].sum()
-
-            # Update the original DataFrame with the Z-scores calculated
-            self.players_df.update(filtered_top_players)
+            total_z += z_scores.sum()
 
         return player_count, total_z
     
@@ -165,15 +169,38 @@ class FantasyAuction:
         return best_solution
 
     def update_bids(self, player_count, total_z, available_to_spend):
-
         restrict = player_count * MIN_SALARY
+        print(f"Restricted amount: {restrict}")
 
         dollar_per_z = (available_to_spend - restrict) / total_z
+        print(f"Dollar per Z-score: {dollar_per_z}")
 
-        self.players_df['Bid'] = (self.players_df['Z-score'] * dollar_per_z) + MIN_SALARY
+        self.players_df.loc[self.players_df['Draftable'] == 'YES', 'Bid'] = (self.players_df['Z-score'] * dollar_per_z) + MIN_SALARY
         self.players_df['Bid'] = self.players_df['Bid'].round(1)
 
-        total_bid_sum = self.players_df[self.players_df['Z-score'] > 0]['Bid'].sum()
+        # Split the DataFrame into three tables based on position
+        goalies_df = self.players_df[self.players_df['Pos'] == 'G']
+        defenders_df = self.players_df[self.players_df['Pos'] == 'D']
+        forwards_df = self.players_df[self.players_df['Pos'] == 'F']
+
+        #Function to print DataFrame with numbering and summary
+        def print_table_with_summary(df, position):
+             df = df.reset_index(drop=True)
+             df.index += 1
+             print(f"{position}:")
+             print(df)
+             print(f"Number of {position} with Bid > 0: {len(df[df['Bid'] > 0])}")
+             print(f"Number of {position} with Status == 'START': {len(df[df['Status'] == 'START'])}")
+             print(f"Sum of Bid column for {position}: {df['Bid'].sum()}")
+             print("\n")
+
+        # Print the tables with summaries
+        print_table_with_summary(goalies_df, "Goalies")
+        # print_table_with_summary(defenders_df, "Defenders")
+        # print_table_with_summary(forwards_df, "Forwards")
+
+        total_bid_sum = self.players_df['Bid'].sum()
+        print(f"Total bid sum: {total_bid_sum}")
 
         return total_bid_sum, restrict, dollar_per_z
 
@@ -204,8 +231,10 @@ class FantasyAuction:
 
         print(f"DOLLAR_PER_Z: {dollar_per_z:.2f}")
 
+
+
         print('=' * 70)
-        print(self.players_df.head(50))
+        print(self.players_df.head(100))
         print("=" * 70)
 
         print(f"Sum of all Bid Values: {total_bid_sum:.2f}")
@@ -216,19 +245,3 @@ if __name__ == "__main__":
     total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z = fantasy_auction.process_data()
     fantasy_auction.build_model()
     fantasy_auction.print_results(total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z)
-
-    # Test calculate_z_scores method
-    player_count, total_z = fantasy_auction.calculate_z_scores()
-    print(f"Player Count: {player_count}")
-    print(f"Total Z: {total_z}")
-
-    # Print the top 40 players with position 'G' and their Z-scores
-    top_40_g = fantasy_auction.players_df[fantasy_auction.players_df['Pos'] == 'F'].sort_values(by='Pts', ascending=False).head(200)
-    top_40_g = top_40_g.reset_index(drop=True)
-    top_40_g.index = top_40_g.index + 1  # Start the index from 1
-    top_40_g.index.name = 'Rank'
-    pd.set_option("display.max_rows", 1000)
-    pd.set_option("display.expand_frame_repr", True)
-    pd.set_option('display.width', 1000)
-    print(f"Top 40 G Players and their Z-scores:\n{top_40_g[['Player', 'Pos', 'Team', 'Pts', 'Z-score']]}")
-    print(f"Z-scores:\n{fantasy_auction.players_df[['Pos', 'Z-score']].head(50)}")
