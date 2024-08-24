@@ -7,7 +7,6 @@ from pyscipopt import Model
 """
 Todo:
 #System is not factoring in players that are starting but are below baseline
-#System is not factoring in players that in the MINOR but above baseline
 #Make Optimizer use saved version so that I can edit the CSV
 #I think optimizer has bids + Salary (which has bids)
 """
@@ -74,6 +73,9 @@ class FantasyAuction:
 
         # Loop over each player group to perform calculations
         for pos, group in grouped_players:
+            # Sort the group by points in descending order, and filter out 'MINOR' players
+            group = group[group['Status'] != 'MINOR'].sort_values('Pts', ascending=False)
+
             group = group.sort_values('Pts', ascending=False)
             if pos == 'F':
                 top_players = group.head(F_baseline)
