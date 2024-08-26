@@ -1,7 +1,6 @@
 import time
 import pandas as pd 
 import json
-import os
 
 from pyscipopt import Model
 
@@ -38,7 +37,7 @@ class FantasyAuction:
             # Load the data into a DataFrame
             df = pd.read_csv(
                 self.csv_path, 
-                dtype={'PTS': int, 'SALARY': float, 'BID': float}
+                dtype={'AGE': int, 'PTS': int, 'SALARY': float, 'BID': float}
             )
 
         except Exception as e:
@@ -52,12 +51,16 @@ class FantasyAuction:
             print("Error: No data loaded.")
             return
     
+        self.players_df['Draftable'] = "NO"  # Initialize the Draftable column to 0
+        self.players_df['STATUS'] = self.players_df['STATUS'].fillna('NO')
+        self.players_df.loc[self.players_df['FCHL TEAM'].isin(['RFA', 'UFA', 'ENT']), 'SALARY'] = 0
+        self.players_df['FCHL TEAM'] = self.players_df['FCHL TEAM'].str.replace("'", "")
+
         total_pool = SALARY * TEAMS
         committed_salary = self.players_df[self.players_df['STATUS'] == 'START']['SALARY'].sum()
         total_penalties = sum(PENALTIES.values())   # Calculate the sum of the penalties
         committed_salary += total_penalties     # Add the sum of the penalties to committed_salary
         available_to_spend = total_pool - committed_salary
-        self.players_df['Draftable'] = "NO"  # Initialize the Draftable column to 0
         player_count, total_z = self.calculate_z_scores()
         total_bid_sum, restrict, dollar_per_z = self.update_bids(player_count, total_z, available_to_spend)
         return total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z
@@ -174,10 +177,10 @@ class FantasyAuction:
 
     def update_bids(self, player_count, total_z, available_to_spend):
         restrict = player_count * MIN_SALARY
-        print(f"Restricted amount: {restrict}")
+        #print(f"Restricted amount: {restrict}")
 
         dollar_per_z = (available_to_spend - restrict) / total_z
-        print(f"Dollar per Z-score: {dollar_per_z}")
+        #print(f"Dollar per Z-score: {dollar_per_z}")
 
         self.players_df.loc[self.players_df['Draftable'] == 'YES', 'BID'] = (self.players_df['Z-score'] * dollar_per_z) + MIN_SALARY
         self.players_df['BID'] = self.players_df['BID'].round(1)
@@ -204,7 +207,7 @@ class FantasyAuction:
         # print_table_with_summary(forwards_df, "Forwards")
 
         total_bid_sum = self.players_df['BID'].sum()
-        print(f"Total bid sum: {total_bid_sum}")
+        #print(f"Total bid sum: {total_bid_sum}")
 
         return total_bid_sum, restrict, dollar_per_z
 
@@ -225,7 +228,7 @@ class FantasyAuction:
 
         print(f"COMMITTED_SALARY: {committed_salary:.1f}")
 
-        print(f"AVAILABLE_TO_SPEND: {available_to_spend}")
+        print(f"AVAILABLE_TO_SPEND: {available_to_spend:.1f}")
 
         print(f"TOTAL_Z: {total_z:.2f}")
 
@@ -235,13 +238,16 @@ class FantasyAuction:
 
         print(f"DOLLAR_PER_Z: {dollar_per_z:.2f}")
 
-        print('=' * 70)
-        print(self.players_df.head(100))
-        print("=" * 70)
+        print('=' * 90)
+
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
+            print(self.players_df.drop(columns=['NHL TEAM', 'AGE']).head(100))
+
+        print("=" * 90)
 
         print(f"Sum of all Bid Values: {total_bid_sum:.2f}")
         print()
-        print("." * 70)
+        print("." * 90)
         print()
 
 
