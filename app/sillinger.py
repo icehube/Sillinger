@@ -6,10 +6,9 @@ from pyscipopt import Model
 
 """
 Todo:
-#System is not factoring in players that are starting but are below baseline
-#System needs to have a way to factor in salary implications of group ABC
-#Make Optimizer use saved version so that I can edit the CSV
-#I think optimizer has bids + Salary (which has bids)
+# System is not factoring in players that are starting but are below baseline
+# Make Optimizer use saved version so that I can edit the CSV
+# I think optimizer has bids + Salary (which has bids)
 """
 
 # Load teams from the JSON file
@@ -51,15 +50,25 @@ class FantasyAuction:
             print("Error: No data loaded.")
             return
     
-        self.players_df['Draftable'] = "NO"  # Initialize the Draftable column to 0
+        # Initialize the Draftable column to NO
+        self.players_df['Draftable'] = "NO"  
+        # Fill missing values in the 'STATUS' column with 'NO'
         self.players_df['STATUS'] = self.players_df['STATUS'].fillna('NO')
+        # Set the salary of players with 'FCHL TEAM' as 'RFA', 'UFA', or 'ENT' to 0
         self.players_df.loc[self.players_df['FCHL TEAM'].isin(['RFA', 'UFA', 'ENT']), 'SALARY'] = 0
+        # Remove single quotes from the 'FCHL TEAM' column
         self.players_df['FCHL TEAM'] = self.players_df['FCHL TEAM'].str.replace("'", "")
 
         total_pool = SALARY * TEAMS
-        committed_salary = self.players_df[self.players_df['STATUS'] == 'START']['SALARY'].sum()
-        total_penalties = sum(PENALTIES.values())   # Calculate the sum of the penalties
-        committed_salary += total_penalties     # Add the sum of the penalties to committed_salary
+        # Calculate the sum of the salaries of players with 'STATUS' as 'START' or 'MINOR' and 'GROUP' as 2 or 3
+        committed_salary = self.players_df[
+            (self.players_df['STATUS'] == 'START') |
+            ((self.players_df['STATUS'] == 'MINOR') & (self.players_df['GROUP'].isin(['2', '3'])))
+        ]['SALARY'].sum()
+        # Calculate the sum of the penalties
+        total_penalties = sum(PENALTIES.values())   
+        # Add the sum of the penalties to committed_salary
+        committed_salary += total_penalties     
         available_to_spend = total_pool - committed_salary
         player_count, total_z = self.calculate_z_scores()
         total_bid_sum, restrict, dollar_per_z = self.update_bids(player_count, total_z, available_to_spend)
@@ -198,11 +207,11 @@ class FantasyAuction:
              print(df)
              print(f"Number of {position} with Bid > 0: {len(df[df['BID'] > 0])}")
              print(f"Number of {position} with Status == 'START': {len(df[df['STATUS'] == 'START'])}")
-             print(f"Sum of Bid column for {position}: {df['Bid'].sum()}")
+             print(f"Sum of Bid column for {position}: {df['BID'].sum()}")
              print("\n")
 
         # Print the tables with summaries
-        # print_table_with_summary(goalies_df, "Goalies")
+        print_table_with_summary(goalies_df, "Goalies")
         # print_table_with_summary(defenders_df, "Defenders")
         # print_table_with_summary(forwards_df, "Forwards")
 
