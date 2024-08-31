@@ -1,6 +1,7 @@
 import time
 import pandas as pd 
 import json
+from tabulate import tabulate
 
 from pyscipopt import Model
 
@@ -56,8 +57,6 @@ class FantasyAuction:
         self.players_df['STATUS'] = self.players_df['STATUS'].fillna('NO')
         # Set the salary of players with 'FCHL TEAM' as 'RFA', 'UFA', or 'ENT' to 0
         self.players_df.loc[self.players_df['FCHL TEAM'].isin(['RFA', 'UFA', 'ENT']), 'SALARY'] = 0
-        # Remove single quotes from the 'FCHL TEAM' column
-        self.players_df['FCHL TEAM'] = self.players_df['FCHL TEAM'].str.replace("'", "")
 
         total_pool = SALARY * TEAMS
         # Calculate the sum of the salaries of players with 'STATUS' as 'START' or 'MINOR' and 'GROUP' as 2 or 3
@@ -90,17 +89,60 @@ class FantasyAuction:
             # Sort the group by points in descending order, and filter out 'MINOR' players
             group = group[group['STATUS'] != 'MINOR'].sort_values('PTS', ascending=False)
 
-            group = group.sort_values('PTS', ascending=False)
+            # Display the count of players in the group before selecting top players
+            player_count = group.shape[0]
+            print(f"Position: {pos}, Player Count: {player_count}")
+            print(group)
+            print("\n")
+
             if pos == 'F':
-                top_players = group.head(F_baseline)
+                baseline = F_baseline
             elif pos == 'D':
-                top_players = group.head(D_baseline)
+                baseline = D_baseline
             elif pos == 'G':
-                top_players = group.head(G_baseline)
+                baseline = G_baseline
             else:
                 continue
 
+            print(f"Initial {pos} Baseline:")
+            print(baseline)
+
+            # Slice the DataFrame first, then apply the boolean condition
+            below_baseline_slice = group.iloc[baseline:]
+            below_baseline_start_players = below_baseline_slice[below_baseline_slice['STATUS'] == 'START']
+            count_below_baseline_start = below_baseline_start_players.shape[0]
+
+            print(f"Count Below Baseline for {pos}:")
+            print(count_below_baseline_start)
+
+            # Adjust the baseline
+            adjusted_baseline = baseline - count_below_baseline_start
+
+            print(f"Adjusted Baseline for {pos}:")
+            print(adjusted_baseline)
+
+            # Select the top players using the adjusted baseline
+            top_players = group.head(adjusted_baseline)
+
+            # Further processing with top_players if needed
+            print(f"Adjusted Baseline for {pos}: {adjusted_baseline}")
+            print(top_players[['PLAYER', 'POS', 'PTS', 'FCHL TEAM']])
+            print("\n")
+
+            # if pos == 'F':
+            #     top_players = group.head(F_baseline)
+            # elif pos == 'D':
+            #     top_players = group.head(D_baseline)
+            # elif pos == 'G':
+            #     top_players = group.head(G_baseline)
+            # else:
+            #     continue
+
+            # Filter out players with 'FCHL TEAM' as 'ENT', 'RFA', or 'UFA'
             filtered_top_players = top_players[top_players['FCHL TEAM'].isin(['ENT', 'RFA', 'UFA'])]
+
+            print(f"Filtered {pos} Players:")
+            print(filtered_top_players)
 
             # Use .loc to update the Draftable column in self.players_df for filtered_top_players
             draftable_indices = filtered_top_players.index
@@ -203,12 +245,13 @@ class FantasyAuction:
         def print_table_with_summary(df, position):
              df = df.reset_index(drop=True)
              df.index += 1
-             print(f"{position}:")
-             print(df)
-             print(f"Number of {position} with Bid > 0: {len(df[df['BID'] > 0])}")
-             print(f"Number of {position} with Status == 'START': {len(df[df['STATUS'] == 'START'])}")
-             print(f"Sum of Bid column for {position}: {df['BID'].sum()}")
-             print("\n")
+             with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
+                print(f"{position}:")
+                print(df)
+                print(f"Number of {position} with Bid > 0: {len(df[df['BID'] > 0])}")
+                print(f"Number of {position} with Status == 'START': {len(df[df['STATUS'] == 'START'])}")
+                print(f"Sum of Bid column for {position}: {df['BID'].sum()}")
+                print("\n")
 
         # Print the tables with summaries
         print_table_with_summary(goalies_df, "Goalies")
@@ -266,7 +309,29 @@ class FantasyAuction:
         
         # Group players by team
         grouped = self.players_df.groupby('FCHL TEAM')
-        
+
+        # Function to format tables side by side
+        def format_side_by_side(table1, table2):
+            table1_lines = table1.split('\n')
+            table2_lines = table2.split('\n')
+            
+            max_lines = max(len(table1_lines), len(table2_lines))
+            table1_lines += [''] * (max_lines - len(table1_lines))
+            table2_lines += [''] * (max_lines - len(table2_lines))
+            
+            combined_lines = [f"{line1:<60} {line2}" for line1, line2 in zip(table1_lines, table2_lines)]
+            return '\n'.join(combined_lines)
+
+        # Custom sorting key for positions
+        def position_sort_key(pos):
+            if pos == 'F':
+                return 0
+            elif pos == 'D':
+                return 1
+            elif pos == 'G':
+                return 2
+            return 3
+
         # Iterate over each team and calculate the summary
         for team_name in teams:
             team_players = grouped.get_group(team_name) 
@@ -282,17 +347,54 @@ class FantasyAuction:
             num_minor_f = minor_counts.get('F', 0)
             num_minor_d = minor_counts.get('D', 0)
             num_minor_g = minor_counts.get('G', 0)
+
+            # Calculate the total number of players with STATUS = 'START' and 'MINOR'
+            total_start_players = team_players[team_players['STATUS'] == 'START'].shape[0]
+            total_minor_players = team_players[team_players['STATUS'] == 'MINOR'].shape[0]
+
+            # Calculate the sum of points for players with STATUS = 'START'
+            total_pts_start = team_players[team_players['STATUS'] == 'START']['PTS'].sum()
             
             # Calculate the sum of salaries
             total_salary = team_players['SALARY'].sum()
+
+            # Prepare the summary table
+            summary_table = [
+                    ["START - F", num_start_f],
+                    ["START - D", num_start_d],
+                    ["START - G", num_start_g],
+                    ["MINOR - F", num_minor_f],
+                    ["MINOR - D", num_minor_d],
+                    ["MINOR - G", num_minor_g],
+                    ["-"*18, "-"*4],  # Separator line
+                    ["Total START Players", total_start_players],
+                    ["Total MINOR Players", total_minor_players],
+                    ["Total PTS (START)", total_pts_start],
+                    ["-"*18, "-"*4],  # Separator line
+                    ["Total Salary", round(total_salary, 2)]
+                ]
+
+            # Sort the players by STATUS, custom POS order, and PTS
+            sorted_players = team_players.sort_values(
+                by=['STATUS', 'POS', 'PTS'], 
+                ascending=[False, True, False], 
+                key=lambda col: col.map(position_sort_key) if col.name == 'POS' else col
+            )
             
-            # Print the summary for the team
-            print(f"{team_name}")
-            print(f"  START - F: {num_start_f}, D: {num_start_d}, G: {num_start_g}")
-            print(f"  MINOR - F: {num_minor_f}, D: {num_minor_d}, G: {num_minor_g}")
-            print(f"  Total Salary: {round(total_salary, 2)}")
-            print()
+            # Prepare the players table
+            players_table = sorted_players[['PLAYER', 'POS', 'STATUS', 'PTS', 'SALARY']].values.tolist()
+            
+            # Convert tables to string format
+            players_table_str = tabulate(players_table, headers=["Player", "Pos", "Status", "Pts", "Salary"], tablefmt="fancy_outline")
+            summary_table_str = tabulate(summary_table, headers=["Category", "Count"], tablefmt="fancy_outline")
     
+            # Print the summary for the team
+            print("-" * 90)
+            print(f"{team_name}")
+            print("-" * 90)
+            print(format_side_by_side(players_table_str, summary_table_str))
+            print()
+            
 
 if __name__ == "__main__":
     fantasy_auction = FantasyAuction('d:\Dropbox\FCHL\sillinger\data\players-24.csv')
