@@ -164,8 +164,11 @@ class FantasyAuction:
         self.model = Model("PlayerSelection")
         self.player_vars = {}
 
-        # Filter players based on specific criteria
-        self.filtered_df = self.players_df[self.players_df['FCHL TEAM'].isin(['ENT', 'UFA', 'RFA', 'BOT'])]
+        # Filter players based on specific criteria and remove players with Bid = 0
+        self.filtered_df = self.players_df[
+            ((self.players_df['FCHL TEAM'].isin(['ENT', 'UFA', 'RFA'])) & (self.players_df['BID'] > 0)) |
+            ((self.players_df['FCHL TEAM'] == 'BOT') & (self.players_df['STATUS'] == 'START'))
+        ]
 
         for i, row in self.filtered_df.iterrows():
             player_name = row['PLAYER']
@@ -182,8 +185,14 @@ class FantasyAuction:
     def solve_model(self):
         try:
             self.model.optimize()
+            if self.model.getStatus() not in ["optimal", "timelimit"]:
+                print("Warning: The model did not solve to optimality or hit a time limit.")
+                return None  # No solution found
+            return self.get_solution()
         except Exception as e:
             print(f"An error occurred during optimization: {e}")
+            return None  # Return None if there's an error
+
 
     def add_constraints(self, player_vars):
         if self.filtered_df.empty:
@@ -273,8 +282,6 @@ class FantasyAuction:
         self.players_df.to_csv(file_path, index=False)
 
     def print_results(self, total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z):
-
-        #print("Optimal value:", self.model.getObjVal())
 
         print(f"TOTAL_POOL: {total_pool}")
 
