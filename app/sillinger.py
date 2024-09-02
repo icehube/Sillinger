@@ -185,14 +185,20 @@ class FantasyAuction:
     def solve_model(self):
         try:
             self.model.optimize()
-            if self.model.getStatus() not in ["optimal", "timelimit"]:
-                print("Warning: The model did not solve to optimality or hit a time limit.")
-                return None  # No solution found
-            return self.get_solution()
+            status = self.model.getStatus()
+            if status == "optimal":
+                return self.get_solution()
+            elif status == "timelimit":
+                print("Warning: Optimization hit the time limit.")
+            else:
+                print(f"Warning: The model did not solve to optimality. Status: {status}")
+            return None
+        except ValueError as ve:
+            print(f"ValueError during optimization: {ve}")
+            return None
         except Exception as e:
-            print(f"An error occurred during optimization: {e}")
-            return None  # Return None if there's an error
-
+            print(f"An unexpected error occurred during optimization: {e}")
+            return None
 
     def add_constraints(self, player_vars):
         if self.filtered_df.empty:
@@ -281,7 +287,7 @@ class FantasyAuction:
         # Write the DataFrame to a new CSV file
         self.players_df.to_csv(file_path, index=False)
 
-    def print_results(self, total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z):
+    def print_results(self, total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z, best_solution):
 
         print(f"TOTAL_POOL: {total_pool}")
 
@@ -404,14 +410,6 @@ class FantasyAuction:
             #print(format_side_by_side(players_table_str, summary_table_str))
             #print()
 
-        # Create and solve the optimization model specifically for the BOT team
-        self.build_model()
-        self.solve_model()
-
-        # Retrieve and print the optimized solution
-        best_solution = self.get_solution()
-
-        # Prepare data for the table
         solution_data = []
         for i, row in self.filtered_df.iterrows():
             if best_solution[self.player_vars[i]] > 0.5:  # If the player is selected in the solution
@@ -424,14 +422,10 @@ class FantasyAuction:
                     row['BID']
                 ])
 
-        # Define headers
         headers = ["Player", "Position", "Status", "Points", "Salary", "Bid"]
 
-        # Print the table using tabulate
         print("Optimized Team for BOT:")
         print(tabulate(solution_data, headers=headers, tablefmt="fancy_outline"))
-
-                
 
 if __name__ == "__main__":
     # Instantiate the FantasyAuction class
@@ -440,5 +434,10 @@ if __name__ == "__main__":
     # Process the data to set up everything needed for the auction
     total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z = fantasy_auction.process_data()
 
-    # The model will now be built, solved, and results printed within this method
-    fantasy_auction.print_results(total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z)
+    # Build and solve the model before printing results
+    fantasy_auction.build_model()
+    best_solution = fantasy_auction.solve_model()
+
+    # Print the results
+    if best_solution is not None:
+        fantasy_auction.print_results(total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z, best_solution)
