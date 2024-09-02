@@ -7,9 +7,9 @@ from pyscipopt import Model
 
 """
 Todo:
-# System is not factoring in players that are starting but are below baseline
-# Make Optimizer use saved version so that I can edit the CSV
-# I think optimizer has bids + Salary (which has bids)
+# Fix Optimizer
+# Import Dobber Projection/Evolving Hockey
+# Colour Bot Players and Prints
 """
 
 # Load teams from the JSON file
@@ -89,12 +89,6 @@ class FantasyAuction:
             # Sort the group by points in descending order, and filter out 'MINOR' players
             group = group[group['STATUS'] != 'MINOR'].sort_values('PTS', ascending=False)
 
-            # Display the count of players in the group before selecting top players
-            player_count = group.shape[0]
-            print(f"Position: {pos}, Player Count: {player_count}")
-            print(group)
-            print("\n")
-
             if pos == 'F':
                 baseline = F_baseline
             elif pos == 'D':
@@ -104,30 +98,27 @@ class FantasyAuction:
             else:
                 continue
 
-            print(f"Initial {pos} Baseline:")
-            print(baseline)
+            print(f"Initial {pos} Baseline: {baseline}")
 
             # Slice the DataFrame first, then apply the boolean condition
             below_baseline_slice = group.iloc[baseline:]
             below_baseline_start_players = below_baseline_slice[below_baseline_slice['STATUS'] == 'START']
             count_below_baseline_start = below_baseline_start_players.shape[0]
 
-            print(f"Count Below Baseline for {pos}:")
-            print(count_below_baseline_start)
+            print(f"Count Below Baseline for {pos}: {count_below_baseline_start}")
 
             # Adjust the baseline
             adjusted_baseline = baseline - count_below_baseline_start
+            print(f"Adjusted Baseline for {pos}: {adjusted_baseline}")
 
-            print(f"Adjusted Baseline for {pos}:")
-            print(adjusted_baseline)
 
             # Select the top players using the adjusted baseline
             top_players = group.head(adjusted_baseline)
 
             # Further processing with top_players if needed
-            print(f"Adjusted Baseline for {pos}: {adjusted_baseline}")
-            print(top_players[['PLAYER', 'POS', 'PTS', 'FCHL TEAM']])
-            print("\n")
+            #with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
+                #print(top_players[['PLAYER', 'POS', 'PTS', 'FCHL TEAM']])
+                #print("\n")
 
             # if pos == 'F':
             #     top_players = group.head(F_baseline)
@@ -141,12 +132,12 @@ class FantasyAuction:
             # Filter out players with 'FCHL TEAM' as 'ENT', 'RFA', or 'UFA'
             filtered_top_players = top_players[top_players['FCHL TEAM'].isin(['ENT', 'RFA', 'UFA'])]
 
-            print(f"Filtered {pos} Players:")
-            print(filtered_top_players)
-
             # Use .loc to update the Draftable column in self.players_df for filtered_top_players
             draftable_indices = filtered_top_players.index
             self.players_df.loc[draftable_indices, 'Draftable'] = "YES"
+
+            #print(f"Filtered {pos} Players:")
+            #print(filtered_top_players)
 
             # Update the counter with the number of rows in filtered_top_players
             player_count += len(filtered_top_players)
@@ -189,9 +180,16 @@ class FantasyAuction:
         self.add_constraints(self.player_vars)
 
     def solve_model(self):
-        self.model.optimize()
+        try:
+            self.model.optimize()
+        except Exception as e:
+            print(f"An error occurred during optimization: {e}")
 
     def add_constraints(self, player_vars):
+        if self.filtered_df.empty:
+            print("Error: No players to consider in the optimization.")
+            return
+
         # Identify players that must be included in the team
         must_include_players = self.filtered_df.index[
             (self.filtered_df['FCHL TEAM'] == 'BOT') & (self.filtered_df['STATUS'] == 'START')
@@ -246,6 +244,8 @@ class FantasyAuction:
              df = df.reset_index(drop=True)
              df.index += 1
              with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
+                print("=" * 90)
+                print("=" * 90)
                 print(f"{position}:")
                 print(df)
                 print(f"Number of {position} with Bid > 0: {len(df[df['BID'] > 0])}")
@@ -254,9 +254,9 @@ class FantasyAuction:
                 print("\n")
 
         # Print the tables with summaries
+        print_table_with_summary(forwards_df, "Forwards")
+        print_table_with_summary(defenders_df, "Defenders")
         print_table_with_summary(goalies_df, "Goalies")
-        # print_table_with_summary(defenders_df, "Defenders")
-        # print_table_with_summary(forwards_df, "Forwards")
 
         total_bid_sum = self.players_df['BID'].sum()
         #print(f"Total bid sum: {total_bid_sum}")
@@ -292,11 +292,10 @@ class FantasyAuction:
 
         print('=' * 90)
 
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
-            print(self.players_df.drop(columns=['NHL TEAM', 'AGE']).head(100))
+        #with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
+            #print(self.players_df.drop(columns=['NHL TEAM', 'AGE']).head(100))
 
         print("=" * 90)
-
         print(f"Sum of all Bid Values: {total_bid_sum:.2f}")
         print()
         print("." * 90)
@@ -356,7 +355,10 @@ class FantasyAuction:
             total_pts_start = team_players[team_players['STATUS'] == 'START']['PTS'].sum()
             
             # Calculate the sum of salaries
-            total_salary = team_players['SALARY'].sum()
+            total_salary = team_players[
+                (team_players['STATUS'] == 'START') | 
+                ((team_players['STATUS'] == 'MINOR') & (team_players['GROUP'].isin(["2", "3"])))
+            ]['SALARY'].sum()
 
             # Prepare the summary table
             summary_table = [
@@ -382,22 +384,54 @@ class FantasyAuction:
             )
             
             # Prepare the players table
-            players_table = sorted_players[['PLAYER', 'POS', 'STATUS', 'PTS', 'SALARY']].values.tolist()
+            players_table = sorted_players[['PLAYER', 'GROUP', 'POS', 'STATUS', 'PTS', 'SALARY']].values.tolist()
             
             # Convert tables to string format
             players_table_str = tabulate(players_table, headers=["Player", "Pos", "Status", "Pts", "Salary"], tablefmt="fancy_outline")
             summary_table_str = tabulate(summary_table, headers=["Category", "Count"], tablefmt="fancy_outline")
     
             # Print the summary for the team
-            print("-" * 90)
-            print(f"{team_name}")
-            print("-" * 90)
-            print(format_side_by_side(players_table_str, summary_table_str))
-            print()
-            
+            #print("-" * 110)
+            #print(f"{team_name}")
+            #print("-" * 110)
+            #print(format_side_by_side(players_table_str, summary_table_str))
+            #print()
+
+        # Create and solve the optimization model specifically for the BOT team
+        self.build_model()
+        self.solve_model()
+
+        # Retrieve and print the optimized solution
+        best_solution = self.get_solution()
+
+        # Prepare data for the table
+        solution_data = []
+        for i, row in self.filtered_df.iterrows():
+            if best_solution[self.player_vars[i]] > 0.5:  # If the player is selected in the solution
+                solution_data.append([
+                    row['PLAYER'],
+                    row['POS'],
+                    row['STATUS'],
+                    row['PTS'],
+                    row['SALARY'],
+                    row['BID']
+                ])
+
+        # Define headers
+        headers = ["Player", "Position", "Status", "Points", "Salary", "Bid"]
+
+        # Print the table using tabulate
+        print("Optimized Team for BOT:")
+        print(tabulate(solution_data, headers=headers, tablefmt="fancy_outline"))
+
+                
 
 if __name__ == "__main__":
+    # Instantiate the FantasyAuction class
     fantasy_auction = FantasyAuction('d:\Dropbox\FCHL\sillinger\data\players-24.csv')
+
+    # Process the data to set up everything needed for the auction
     total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z = fantasy_auction.process_data()
-    fantasy_auction.build_model()
+
+    # The model will now be built, solved, and results printed within this method
     fantasy_auction.print_results(total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z)
