@@ -289,13 +289,13 @@ class FantasyAuction:
 
     def print_results(self, total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z, best_solution):
 
-        print(f"TOTAL_POOL: {total_pool}")
+        print(f"TOTAL POOL: {total_pool}")
 
-        print(f"COMMITTED_SALARY: {committed_salary:.1f}")
+        print(f"COMMITTED SALARY: {committed_salary:.1f}")
 
-        print(f"AVAILABLE_TO_SPEND: {available_to_spend:.1f}")
+        print(f"AVAILABLE TO SPEND: {available_to_spend:.1f}")
 
-        print(f"TOTAL_Z: {total_z:.2f}")
+        print(f"TOTAL Z: {total_z:.2f}")
 
         print(f"Players to be auctioned: {player_count}")
 
@@ -309,7 +309,7 @@ class FantasyAuction:
             #print(self.players_df.drop(columns=['NHL TEAM', 'AGE']).head(100))
 
         print("=" * 90)
-        print(f"Sum of all Bid Values: {total_bid_sum:.2f}")
+        print(f"Sum of all Bid Values: {total_bid_sum:.1f}")
         print()
         print("." * 90)
         print()
@@ -416,13 +416,14 @@ class FantasyAuction:
                 solution_data.append([
                     row['PLAYER'],
                     row['POS'],
+                    row['NHL TEAM'],
                     row['STATUS'],
                     row['PTS'],
                     row['SALARY'],
                     row['BID']
                 ])
 
-        headers = ["Player", "Position", "Status", "Points", "Salary", "Bid"]
+        headers = ["Player", "Position", "NHL Team", "Status", "Points", "Salary", "Bid"]
 
         print("Optimized Team for BOT:")
         print(tabulate(solution_data, headers=headers, tablefmt="fancy_outline"))
