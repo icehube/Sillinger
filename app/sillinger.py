@@ -1,7 +1,10 @@
 import time
 import pandas as pd 
 import json
+from rich.console import Console
+from rich.table import Table
 from tabulate import tabulate
+
 
 from pyscipopt import Model
 
@@ -162,6 +165,10 @@ class FantasyAuction:
     
     def build_model(self):
         self.model = Model("PlayerSelection")
+
+        # Set the verbosity level to suppress output
+        self.model.setParam('display/verblevel', 1)  # Turns off output verbosity
+    
         self.player_vars = {}
 
         # Filter players based on specific criteria and remove players with Bid = 0
@@ -254,19 +261,57 @@ class FantasyAuction:
         defenders_df = self.players_df[self.players_df['POS'] == 'D']
         forwards_df = self.players_df[self.players_df['POS'] == 'F']
 
-        #Function to print DataFrame with numbering and summary
+        console = Console()
+
+        # Function to print DataFrame with numbering and summary using tabulate and rich
         def print_table_with_summary(df, position):
-             df = df.reset_index(drop=True)
-             df.index += 1
-             with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.expand_frame_repr', False):
-                print("=" * 90)
-                print("=" * 90)
-                print(f"{position}:")
-                print(df)
-                print(f"Number of {position} with Bid > 0: {len(df[df['BID'] > 0])}")
-                print(f"Number of {position} with Status == 'START': {len(df[df['STATUS'] == 'START'])}")
-                print(f"Sum of Bid column for {position}: {df['BID'].sum()}")
-                print("\n")
+            df = df.sort_values(by='PTS', ascending=False)  # Sort by PTS column in descending order
+            df = df.reset_index(drop=True)
+            df.index += 1
+
+            # Drop the 'Draftable' column for display purposes
+            df = df.drop(columns=['Draftable'])
+
+            # Prepare the table using tabulate
+            table_str = tabulate(df, headers='keys', tablefmt="grid", showindex=False)
+
+            # Split the table into lines for coloring
+            table_lines = table_str.split("\n")
+
+            # Create a rich Table
+            rich_table = Table(title=f"{position} Table", show_header=True, header_style="bold grey70")
+
+            # Add a custom column for row numbering
+            rich_table.add_column("No.", justify="right", style="cyan")
+    
+            # Add columns, setting min_width for "Player" column to avoid wrapping
+            for col in df.columns:
+                if col == "Player":  # Adjust width specifically for the "Player" column
+                    rich_table.add_column(col, min_width=55)  # Increase the width for "Player"
+                else:
+                    rich_table.add_column(col)
+
+            # Add rows to the rich table, color those where 'FCHL TEAM' == 'BOT'
+            for index, row in df.iterrows():
+                row_str = [str(item) for item in row]
+                row_number = str(index + 0)  # Row number starts from 1
+
+                if row['FCHL TEAM'] == 'BOT':
+                    rich_table.add_row(row_number, *row_str, style="bold bright_magenta")  # Color the row red
+            # Color the row green if 'FCHL TEAM' is 'UFA' or 'RFA'
+                elif row['FCHL TEAM'] == 'UFA' or row['FCHL TEAM'] == 'RFA':
+                    rich_table.add_row(row_number, *row_str, style="bold bright_green")
+                else:
+                    rich_table.add_row(row_number, *row_str)
+
+            # Print the rich table with color
+            console.print(rich_table)
+
+            # Print summary with color formatting
+            console.print(f"Number of {position} with Bid > 0: {len(df[df['BID'] > 0])}", style="bright_yellow")
+            console.print(f"Number of {position} with Status == 'START': {len(df[df['STATUS'] == 'START'])}", style="bright_yellow")
+            console.print(f"Sum of Bid column for {position}: {df['BID'].sum()}", style="bright_yellow")
+            console.print("\n")
 
         # Print the tables with summaries
         print_table_with_summary(forwards_df, "Forwards")
@@ -274,7 +319,6 @@ class FantasyAuction:
         print_table_with_summary(goalies_df, "Goalies")
 
         total_bid_sum = self.players_df['BID'].sum()
-        #print(f"Total bid sum: {total_bid_sum}")
 
         return total_bid_sum, restrict, dollar_per_z
 
@@ -404,13 +448,14 @@ class FantasyAuction:
             summary_table_str = tabulate(summary_table, headers=["Category", "Count"], tablefmt="fancy_outline")
     
             # Print the summary for the team
-            #print("-" * 110)
-            #print(f"{team_name}")
-            #print("-" * 110)
-            #print(format_side_by_side(players_table_str, summary_table_str))
+            print("-" * 110)
+            print(f"{team_name}")
+            print("-" * 110)
+            print(format_side_by_side(players_table_str, summary_table_str))
             #print()
 
         solution_data = []
+        
         for i, row in self.filtered_df.iterrows():
             if best_solution[self.player_vars[i]] > 0.5:  # If the player is selected in the solution
                 solution_data.append([
@@ -425,12 +470,17 @@ class FantasyAuction:
 
         headers = ["Player", "Position", "NHL Team", "Status", "Points", "Salary", "Bid"]
 
+        print()
+        print("|" * 110)
+        print("|" * 110)
+        print()
+                  
         print("Optimized Team for BOT:")
         print(tabulate(solution_data, headers=headers, tablefmt="fancy_outline"))
 
 if __name__ == "__main__":
     # Instantiate the FantasyAuction class
-    fantasy_auction = FantasyAuction('d:\Dropbox\FCHL\sillinger\data\players-24.csv')
+    fantasy_auction = FantasyAuction('/Users/kylehuberman/Desktop/Sillinger/Sillinger/data/players-24.csv')
 
     # Process the data to set up everything needed for the auction
     total_pool, committed_salary, available_to_spend, player_count, total_z, total_bid_sum, restrict, dollar_per_z = fantasy_auction.process_data()
